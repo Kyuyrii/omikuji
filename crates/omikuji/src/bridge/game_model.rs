@@ -966,6 +966,10 @@ impl qobject::GameModel {
             QVariant::from(&QString::from(&*runner_display(game))),
         );
         map.insert(
+            QString::from("runnerType"),
+            QVariant::from(&QString::from(&*game.runner.runner_type)),
+        );
+        map.insert(
             QString::from("exe"),
             QVariant::from(&QString::from(&*game.metadata.exe.to_string_lossy())),
         );

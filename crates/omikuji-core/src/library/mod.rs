@@ -422,7 +422,7 @@ pub fn generate_id() -> String {
 
 impl Game {
     pub fn new(name: String, exe: PathBuf) -> Self {
-        Self::with_options(name, exe, None, None, None)
+        Self::with_options(name, exe, None, Some("wine".to_string()), None)
     }
 
     pub fn with_options(

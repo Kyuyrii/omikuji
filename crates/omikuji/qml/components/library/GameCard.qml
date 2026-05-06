@@ -5,18 +5,11 @@ import "../widgets"
 BaseCard {
     id: card
 
-    readonly property string effectiveRunnerType: {
-        if (runnerType === "steam") return "steam"
-        if (runnerType === "flatpak") return "flatpak"
-        if (runner !== "" && (runner.includes("wine") || runner.includes("Proton"))) return "wine"
-        return runnerType
-    }
-
     title: name
     imageSource: coverart || banner
-    leftIconName: effectiveRunnerType === "steam"
-        ? "steam"
-        : (effectiveRunnerType === "wine" ? "wine_bar" : "")
+    leftIconName: runnerType === "steam" ? "steam"
+                : runnerType === "flatpak" ? ""
+                : "wine_bar"
     leftIconSize: 20
     clickable: true
     contextEnabled: true

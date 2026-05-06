@@ -54,9 +54,8 @@ Item {
         let game = gameModel.get_game(index)
         if (!game) return false
 
-        // runner role is wine.version not a category enum, so check the string content
-        let wineVersion = game.runner || ""
-        let isWine = wineVersion !== "" && (wineVersion.includes("wine") || wineVersion.includes("Proton"))
+        let runnerType = game.runnerType || ""
+        let isWine = runnerType !== "steam" && runnerType !== "flatpak"
 
         switch (filterKind) {
             case "all":       return true
