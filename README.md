@@ -40,7 +40,7 @@ Not implemented/WIP/Planning to add:
 - i18n/qsTr (ehahahshhaha)
 - Amazon Games
 - PGR technically doesn't work for the simple fact that its CDN is stuck on v3.4.0 (?)
-- make jadeite and hpatchz optional (not automatically fetched on startup)
+- make gacha stuff optional (not automatically fetched on startup)
 - more CLI commands which i cant be bothered with yet
 - Genuinely fix some UI stuff (e.g, settings page edit/add games tabs. I dont like them there ngl)
 - Components tab in the settings page is a bit ass and im not sure i like the green texts/balls
@@ -99,6 +99,6 @@ Heavy debt to the prior art:
 
 - [Lutris](https://github.com/lutris/lutris): the wrapping chain, env setup, runner detection logic, and a lot of wine know-how is ported from here.
 - [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher): Epic and GOG integration patterns. Also the source of the bundled `gogdl` binary.
-- [AAG](https://github.com/an-anime-team/): gacha launcher reference. HoYo Sophon, Jadeite, CDN methods all from them <3. 
+- [AAG](https://github.com/an-anime-team/): gacha launcher reference. HoYo Sophon, CDN methods all from them <3. 
 
 Bundled icon set: [Material Symbols](https://github.com/google/material-design-icons) (Apache-2.0).
