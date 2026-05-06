@@ -23,18 +23,17 @@ Item {
         spacing: 2
 
         Text {
+            id: labelText
             text: root.label
             color: theme.text
             font.pixelSize: 15
-            width: parent.width
-            elide: Text.ElideRight
         }
 
         Text {
             text: root.description
             color: theme.textSubtle
             font.pixelSize: 13
-            width: parent.width
+            width: Math.max(labelText.width, root.labelWidth)
             wrapMode: Text.WordWrap
             visible: root.description !== ""
         }
