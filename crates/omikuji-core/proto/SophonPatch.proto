@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package sophon;
+
+message SophonPatchProto
+{
+    repeated SophonPatchAssetProperty  PatchAssets  = 1;
+    map<string, SophonUnusedAssetInfo> UnusedAssets = 2;
+}
+
+message SophonPatchAssetProperty
+{
+    string                             AssetName        = 1;
+    uint64                             AssetSize        = 2;
+    string                             AssetHashMd5     = 3;
+    map<string, SophonPatchAssetChunk> AssetPatchChunks = 4;
+}
+
+message SophonPatchAssetChunk
+{
+    string PatchName          = 1;
+    string VersionTag         = 2;
+    string BuildId            = 3;
+    uint64 PatchSize          = 4;
+    string PatchMd5           = 5;
+    uint64 PatchOffset        = 6;
+    uint64 PatchLength        = 7;
+    string OriginalFileName   = 8;
+    uint64 OriginalFileLength = 9;
+    string OriginalFileMd5    = 10;
+}
+
+message SophonUnusedAssetInfo
+{
+    repeated SophonUnusedAssetFile Assets = 1;
+}
+
+message SophonUnusedAssetFile
+{
+    string FileName = 1;
+    uint64 FileSize = 2;
+    string FileMd5  = 3;
+}

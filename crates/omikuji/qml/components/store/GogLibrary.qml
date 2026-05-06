@@ -1,0 +1,286 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+import omikuji 1.0
+import "../widgets"
+
+Item {
+    id: root
+
+    property var gogModel: null
+    property real cardZoom: 1.0
+    property int cardSpacing: 16
+    property bool cardElevation: false
+    property string searchText: ""
+    property string cardFlow: "center"
+    property var activeDownloads: ({})
+
+    signal backClicked()
+    signal gameImported()
+    signal installRequested(int index)
+    signal importRequested(int index)
+
+    function _maybeRefresh() {
+        if (gogModel && gogModel.isLoggedIn) {
+            gogModel.refresh()
+        }
+    }
+    Component.onCompleted: _maybeRefresh()
+    onVisibleChanged: if (visible) _maybeRefresh()
+
+    // cardGrid stays mounted so cached cards paint during live refresh; overlays sit on top (z:90)
+    readonly property bool isLoggedIn: gogModel && gogModel.isLoggedIn
+    readonly property bool isRefreshing: gogModel && gogModel.isRefreshing === true
+
+    CardGrid {
+        id: cardGrid
+        anchors.fill: parent
+        visible: root.isLoggedIn
+        enabled: visible
+
+        model: gogModel
+        cardZoom: root.cardZoom
+        cardSpacing: root.cardSpacing
+        cardFlow: root.cardFlow
+
+        headerComponent: Component {
+            RowLayout {
+                anchors.fill: parent
+                spacing: 8
+
+                Text {
+                    text: "Logged in as: " + (gogModel ? gogModel.displayName : "")
+                    color: theme.textMuted
+                    font.pixelSize: 13
+                }
+
+                Item { Layout.fillWidth: true }
+
+                IconButton {
+                    icon: "sync"
+                    size: 32
+                    onClicked: gogModel.refresh()
+                }
+
+                IconButton {
+                    icon: "logout"
+                    size: 32
+                    onClicked: gogModel.logout()
+                }
+            }
+        }
+
+        delegate: BaseCard {
+            id: gogCard
+            required property var modelData
+            required property int index
+
+            width: 180 * root.cardZoom
+            height: 240 * root.cardZoom
+            elevation: root.cardElevation
+
+            property bool isInstalled: modelData.isInstalled
+            property bool hasLibraryEntry: modelData.hasLibraryEntry === true
+            property bool isDownloading: root.activeDownloads[modelData.appName] !== undefined
+            property string cardState: !isInstalled ? "uninstalled"
+                : (hasLibraryEntry ? "imported" : "needs-import")
+
+            title: modelData.title
+            imageSource: modelData.coverart || ""
+            imageOpacity: isInstalled ? 1.0 : 0.6
+            leftIconName: "gog"
+            leftIconSize: 20
+            selected: isInstalled
+            clickable: false
+            cardVisible: root.searchText === ""
+                || (modelData.title || "").toLowerCase().includes(root.searchText.toLowerCase())
+
+            actionComponent: Component {
+                StoreCardAction {
+                    icon: {
+                        if (gogCard.cardState === "uninstalled") return "add"
+                        if (gogCard.cardState === "needs-import") return "download"
+                        return "check_circle"
+                    }
+                    visible: !gogCard.isDownloading
+                    primary: gogCard.cardState !== "imported"
+                    onClicked: {
+                        if (gogCard.cardState === "uninstalled") {
+                            root.installRequested(gogCard.index)
+                        } else if (gogCard.cardState === "needs-import") {
+                            root.importRequested(gogCard.index)
+                        }
+                    }
+                }
+            }
+
+            overlayComponent: Component {
+                Item {
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: 4
+                        height: 24
+                        radius: 10
+                        color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.9)
+                        visible: gogCard.isDownloading
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: {
+                                let dl = root.activeDownloads[gogCard.modelData.appName]
+                                if (!dl) return ""
+                                if (dl.status === "Downloading") return dl.progress.toFixed(0) + "%"
+                                return dl.status
+                            }
+                            color: theme.accentOn
+                            font.pixelSize: 11
+                            font.weight: Font.Bold
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Item {
+        id: loadingOverlay
+        anchors.fill: parent
+        visible: root.isLoggedIn && root.isRefreshing && cardGrid.count === 0
+        z: 90
+
+        LoadingDots {
+            anchors.centerIn: parent
+            text: "Loading library"
+            running: loadingOverlay.visible
+        }
+    }
+
+    Item {
+        id: emptyOverlay
+        anchors.fill: parent
+        visible: root.isLoggedIn && !root.isRefreshing && cardGrid.count === 0
+        z: 90
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 10
+
+            SvgIcon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                name: "gog"
+                size: 48
+                color: theme.textFaint
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "No games in this store"
+                color: theme.textMuted
+                font.pixelSize: 16
+                font.weight: Font.Medium
+            }
+        }
+    }
+
+    Item {
+        id: loginOverlay
+        anchors.fill: parent
+        visible: gogModel && !gogModel.isLoggedIn
+        z: 100
+
+        Column {
+            anchors.centerIn: parent
+            width: 400
+            spacing: 24
+
+            SvgIcon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                name: "gog"
+                size: 64
+                color: theme.text
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Login to GOG"
+                color: theme.text
+                font.pixelSize: 20
+                font.weight: Font.Bold
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
+                text: "To sync your GOG library, sign in on gog.com and paste the authorization code from the redirect URL."
+                color: theme.textMuted
+                font.pixelSize: 14
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+            }
+
+            Text {
+                id: gogLoginLink
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Open Login Page"
+                color: linkMouseArea.containsMouse ? Qt.lighter(theme.accent, 1.1) : theme.accent
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
+                Behavior on color { ColorAnimation { duration: 100 } }
+
+                MouseArea {
+                    id: linkMouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Qt.openUrlExternally(gogModel.get_login_url())
+                }
+            }
+
+            M3TextField {
+                id: loginCodeField
+                width: parent.width
+                placeholder: "Paste authorization code here..."
+            }
+
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 140
+                height: 42
+                enabled: loginCodeField.text.length > 0
+                opacity: enabled ? 1.0 : 0.5
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 21
+                    color: theme.accent
+                    opacity: loginMouseArea.containsPress ? 0.8 : (loginMouseArea.containsMouse ? 0.95 : 0.9)
+                    scale: loginMouseArea.containsPress ? 0.97 : 1.0
+                    Behavior on opacity { NumberAnimation { duration: 100 } }
+                    Behavior on scale { NumberAnimation { duration: 100 } }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Login"
+                    color: theme.accentOn
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    id: loginMouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        gogModel.login(loginCodeField.text)
+                        loginCodeField.text = ""
+                    }
+                }
+            }
+        }
+    }
+}

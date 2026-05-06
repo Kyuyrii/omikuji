@@ -1,0 +1,164 @@
+use cxx_qt_build::{CxxQtBuilder, QmlModule};
+use std::fs;
+use std::path::Path;
+
+fn collect_icons() -> (Vec<String>, Vec<String>) {
+    let dir = Path::new("qml/icons");
+    let mut paths: Vec<String> = vec![];
+    let mut names: Vec<String> = vec![];
+    for entry in fs::read_dir(dir).expect("qml/icons must exist") {
+        let entry = entry.expect("read qml/icons entry");
+        let p = entry.path();
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+        if !matches!(ext, "svg" | "png") {
+            continue;
+        }
+        let filename = p.file_name().unwrap().to_string_lossy().into_owned();
+        let stem = filename.strip_suffix(&format!(".{ext}")).unwrap().to_string();
+        paths.push(format!("qml/icons/{filename}"));
+        if ext == "svg" && stem != "app" {
+            names.push(stem);
+        }
+    }
+    paths.sort();
+    names.sort();
+    (paths, names)
+}
+
+fn write_icon_names(names: &[String]) {
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
+    let out_path = Path::new(&out_dir).join("icon_names.rs");
+    let mut content = String::from("pub const ICON_NAMES: &[&str] = &[\n");
+    for n in names {
+        content.push_str(&format!("    \"{n}\",\n"));
+    }
+    content.push_str("];\n");
+    fs::write(&out_path, content).expect("write icon_names.rs");
+}
+
+fn main() {
+    let (icon_paths, icon_names) = collect_icons();
+    write_icon_names(&icon_names);
+    println!("cargo:rerun-if-changed=qml/icons");
+
+    let builder = CxxQtBuilder::new_qml_module(
+        QmlModule::new("omikuji")
+            .qml_files([
+                "qml/Main.qml",
+                // root
+                "qml/components/Theme.qml",
+
+                "qml/components/categories/CategoriesController.qml",
+                // dialogs
+                "qml/components/dialogs/ArchiveManageDialog.qml",
+                "qml/components/dialogs/CategoryEditDialog.qml",
+                "qml/components/dialogs/ConfirmDialog.qml",
+                "qml/components/dialogs/ContextMenu.qml",
+                "qml/components/dialogs/DefaultsApplyDialog.qml",
+                "qml/components/dialogs/EpicInstallDialog.qml",
+                "qml/components/dialogs/GachaInstallDialog.qml",
+                "qml/components/dialogs/GameCategoriesDialog.qml",
+                "qml/components/dialogs/GogInstallDialog.qml",
+                "qml/components/dialogs/GameLogsWindow.qml",
+                "qml/components/dialogs/UpdateAvailableDialog.qml",
+                // downloads
+                "qml/components/downloads/ComponentRow.qml",
+                "qml/components/downloads/DownloadRow.qml",
+                "qml/components/downloads/DownloadsPage.qml",
+                // library
+                "qml/components/library/FloatingBar.qml",
+                "qml/components/library/GameCard.qml",
+                "qml/components/library/GameContextMenu.qml",
+                "qml/components/library/GameGrid.qml",
+                "qml/components/library/GameIcon.qml",
+                // navigation
+                "qml/components/navigation/NavTabs.qml",
+                "qml/components/navigation/Sidebar.qml",
+                "qml/components/navigation/TopBar.qml",
+                "qml/components/navigation/WindowControls.qml",
+                // pages
+                "qml/components/pages/AddGamePage.qml",
+                "qml/components/pages/GameSettingsPage.qml",
+                "qml/components/pages/GlobalSettingsPage.qml",
+                // settings
+                "qml/components/settings/ArchiveSourceRow.qml",
+                "qml/components/settings/SettingsActionBar.qml",
+                "qml/components/settings/SettingsRow.qml",
+                "qml/components/settings/SettingsSection.qml",
+                "qml/components/settings/TabEpic.qml",
+                "qml/components/settings/TabGameInfo.qml",
+                "qml/components/settings/TabGlobalAbout.qml",
+                "qml/components/settings/TabGlobalComponents.qml",
+                "qml/components/settings/TabGlobalDefaults.qml",
+                "qml/components/settings/TabGlobalUi.qml",
+                "qml/components/settings/TabRunnerOptions.qml",
+                "qml/components/settings/TabSystem.qml",
+                // store
+                "qml/components/store/EpicLibrary.qml",
+                "qml/components/store/GachaLibrary.qml",
+                "qml/components/store/GogLibrary.qml",
+                "qml/components/store/EpicController.qml",
+                "qml/components/store/GachaController.qml",
+                "qml/components/store/GogController.qml",
+                "qml/components/store/StorePanel.qml",
+                "qml/components/store/SteamLibrary.qml",
+                // widgets
+                "qml/components/widgets/BaseCard.qml",
+                "qml/components/widgets/CardGrid.qml",
+                "qml/components/widgets/DisplayOptionsPopup.qml",
+                "qml/components/widgets/IconButton.qml",
+                "qml/components/widgets/IconPickerPopup.qml",
+                "qml/components/widgets/KeyValueTable.qml",
+                "qml/components/widgets/LoadingDots.qml",
+                "qml/components/widgets/M3Dropdown.qml",
+                "qml/components/widgets/M3FileField.qml",
+                "qml/components/widgets/M3Slider.qml",
+                "qml/components/widgets/M3SpinBox.qml",
+                "qml/components/widgets/M3Switch.qml",
+                "qml/components/widgets/M3TextField.qml",
+                "qml/components/widgets/PlayButton.qml",
+                "qml/components/widgets/StatusBadge.qml",
+                "qml/components/widgets/StoreCardAction.qml",
+                "qml/components/widgets/SvgIcon.qml",
+                "qml/components/widgets/TabPill.qml",
+                "qml/components/widgets/ToastManager.qml",
+                "qml/components/widgets/Tooltip.qml",
+                "qml/components/widgets/WavyProgressBar.qml",
+            ])
+    )
+    .qrc_resources(&icon_paths)
+    .files([
+        "src/bridge/game_model.rs",
+        "src/bridge/library_watcher.rs",
+        "src/bridge/epic_model.rs",
+        "src/bridge/gog_model.rs",
+        "src/bridge/download_model.rs",
+        "src/bridge/ui_settings.rs",
+        "src/bridge/components.rs",
+        "src/bridge/archive_manager.rs",
+        "src/bridge/defaults.rs",
+    ])
+    ;
+
+    // link QtSvg, QIcon uses the image plugin system to load SVGs.
+    // cxx-qt-build's qt_module("Svg") sets include paths but doesn't always add the shared lib to the runtime link
+    // force it withan explicit rustc directive so libQt6Svg.so ends up in the dependency graph. 
+    // without this, QIcon(path) silently returns an empty icon for .svg files and renders blank
+    let builder = builder.qt_module("Svg");
+    println!("cargo:rustc-link-lib=Qt6Svg");
+
+    // one-off C++ shim: calls QGuiApplication::setWindowIcon. QML's
+    // Window / ApplicationWindow don't expose `icon` as an assignable
+    // property in our Qt version, so we set it from Rust via a tiny
+    // extern "C" function defined in src/app_icon.cpp. cc_builder is
+    // marked unsafe by cxx-qt-build because the closure has full
+    // access to the internal cc::Build; adding one file is harmless.
+    let builder = unsafe {
+        builder.cc_builder(|cc| {
+            cc.file("src/app_icon.cpp");
+        })
+    };
+    println!("cargo:rerun-if-changed=src/app_icon.cpp");
+
+    builder.build();
+}

@@ -1,0 +1,416 @@
+use crate::library::{Game, Library};
+use crate::media::{media_path, MediaType};
+use anyhow::{Context, Result};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+pub fn desktop_dir() -> Option<PathBuf> {
+    if let Ok(desktop) = std::env::var("XDG_DESKTOP_DIR") {
+        let path = PathBuf::from(&desktop);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    let user_dirs = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .join("user-dirs.dirs");
+
+
+    if let Ok(content) = std::fs::read_to_string(&user_dirs) {
+        for line in content.lines() {
+            if line.starts_with("XDG_DESKTOP_DIR=") {
+                let path_str = line.trim_start_matches("XDG_DESKTOP_DIR=")
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'');
+
+
+                let expanded = if path_str.starts_with("$HOME/") {
+                    dirs::home_dir()
+                        .map(|h| h.join(&path_str[6..]))
+                        .unwrap_or_else(|| PathBuf::from(path_str))
+                } else if path_str.starts_with('~') {
+                    dirs::home_dir()
+                        .map(|h| h.join(&path_str[2..]))
+                        .unwrap_or_else(|| PathBuf::from(path_str))
+                } else {
+                    PathBuf::from(path_str)
+                };
+
+
+                if expanded.exists() {
+                    return Some(expanded);
+                }
+            }
+        }
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        let desktop = home.join("Desktop");
+        if desktop.exists() {
+            return Some(desktop);
+        }
+        // some locales use ~/desktop (lowercase)
+        let desktop_lc = home.join("desktop");
+        if desktop_lc.exists() {
+            return Some(desktop_lc);
+        }
+    }
+
+    let dirs_result = dirs::desktop_dir();
+    dirs_result
+}
+
+pub fn applications_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+        .join("applications")
+}
+
+pub fn browse_files(path: &Path) -> Result<()> {
+    let path_str = path.to_string_lossy();
+    let url = if path_str.starts_with("file://") {
+        path_str.to_string()
+    } else {
+        format!("file://{}", path_str)
+    };
+
+    Command::new("xdg-open")
+        .arg(&url)
+        .spawn()
+        .with_context(|| format!("failed to open file manager for {}", path.display()))?;
+
+    Ok(())
+}
+
+pub fn get_game_browse_dir(game: &Game) -> Option<PathBuf> {
+    if !game.launch.working_dir.is_empty() {
+        let path = PathBuf::from(&game.launch.working_dir);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    if game.runner.runner_type == "steam" {
+        return crate::steam::local::get_game_install_dir(&game.metadata.id);
+    }
+
+    game.metadata.exe.parent().map(|p| p.to_path_buf())
+}
+
+fn desktop_filename(slug: &str, id: &str) -> String {
+    format!("omikuji.{}-{}.desktop", slug, id)
+}
+
+fn generate_desktop_content(game: &Game) -> String {
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let icon = resolve_desktop_icon(game);
+    let exec = format!("omikuji run {}_{}", slug, game.metadata.id);
+
+    format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name={}\n\
+         Icon={}\n\
+         Exec={}\n\
+         Categories=Game\n\
+         Terminal=false\n",
+        escape_desktop_value(&game.metadata.name),
+        icon,
+        exec
+    )
+}
+
+fn resolve_desktop_icon(game: &Game) -> String {
+    if !game.metadata.icon.is_empty() {
+        return game.metadata.icon.clone();
+    }
+
+    let icon = media_path(&game.metadata.id, &MediaType::Icon);
+    if icon.exists() {
+        return icon.to_string_lossy().into_owned();
+    }
+
+    let coverart = media_path(&game.metadata.id, &MediaType::Coverart);
+    if coverart.exists() {
+        return coverart.to_string_lossy().into_owned();
+    }
+
+    "omikuji".to_string()
+}
+
+fn escape_desktop_value(value: &str) -> String {
+    value.replace("\\", "\\\\").replace("\n", "\\n")
+}
+
+fn sanitize_slug(name: &str) -> String {
+    name.to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")
+        .replace(' ', "-")
+        .replace("--", "-")
+        .trim_matches('-')
+        .to_string()
+}
+
+pub fn create_desktop_shortcut(game: &Game) -> Result<PathBuf> {
+    let desktop = desktop_dir()
+        .or_else(|| {
+            dirs::home_dir().map(|h| h.join("Desktop"))
+        })
+        .context("could not find or create desktop directory")?;
+
+    if !desktop.exists() {
+        std::fs::create_dir_all(&desktop)
+            .with_context(|| format!("creating desktop directory {}", desktop.display()))?;
+    }
+
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let filename = desktop_filename(&slug, &game.metadata.id);
+    let path = desktop.join(&filename);
+
+    let content = generate_desktop_content(game);
+    fs::write(&path, content)
+        .with_context(|| format!("writing desktop file {}", path.display()))?;
+
+    let perms = fs::Permissions::from_mode(0o755);
+    fs::set_permissions(&path, perms)
+        .with_context(|| format!("setting permissions on {}", path.display()))?;
+
+    Ok(path)
+}
+
+pub fn create_menu_shortcut(game: &Game) -> Result<PathBuf> {
+    let apps_dir = applications_dir();
+    fs::create_dir_all(&apps_dir)
+        .with_context(|| format!("creating applications directory {}", apps_dir.display()))?;
+
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let filename = desktop_filename(&slug, &game.metadata.id);
+    let path = apps_dir.join(&filename);
+
+    let content = generate_desktop_content(game);
+    fs::write(&path, content)
+        .with_context(|| format!("writing menu file {}", path.display()))?;
+
+    let perms = fs::Permissions::from_mode(0o755);
+    fs::set_permissions(&path, perms)
+        .with_context(|| format!("setting permissions on {}", path.display()))?;
+
+    Ok(path)
+}
+
+pub fn remove_desktop_shortcut(game: &Game) -> Result<()> {
+    let Some(desktop) = desktop_dir() else {
+        return Ok(());
+    };
+
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let filename = desktop_filename(&slug, &game.metadata.id);
+    let path = desktop.join(&filename);
+
+    if path.exists() {
+        fs::remove_file(&path)
+            .with_context(|| format!("removing desktop file {}", path.display()))?;
+    }
+
+    Ok(())
+}
+
+pub fn remove_menu_shortcut(game: &Game) -> Result<()> {
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let filename = desktop_filename(&slug, &game.metadata.id);
+    let path = applications_dir().join(&filename);
+
+    if path.exists() {
+        fs::remove_file(&path)
+            .with_context(|| format!("removing menu file {}", path.display()))?;
+    }
+
+    Ok(())
+}
+
+pub fn desktop_shortcut_exists(game: &Game) -> bool {
+    let Some(desktop) = desktop_dir() else {
+        return false;
+    };
+
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let filename = desktop_filename(&slug, &game.metadata.id);
+    desktop.join(&filename).exists()
+}
+
+pub fn menu_shortcut_exists(game: &Game) -> bool {
+    let slug = if game.metadata.slug.is_empty() {
+        sanitize_slug(&game.metadata.name)
+    } else {
+        game.metadata.slug.clone()
+    };
+
+    let filename = desktop_filename(&slug, &game.metadata.id);
+    applications_dir().join(&filename).exists()
+}
+
+pub fn duplicate_game(game: &Game) -> Result<Game> {
+    let new_id = crate::library::generate_id();
+
+    let mut new_game = game.clone();
+    new_game.metadata.id = new_id;
+    new_game.metadata.name = format!("{} (Copy)", game.metadata.name);
+    new_game.metadata.playtime = 0.0;
+    new_game.metadata.last_played = String::new();
+
+    Library::save_game_static(&new_game)?;
+
+    Ok(new_game)
+}
+
+pub fn disk_free_space(path: &str) -> u64 {
+    let mut p = std::path::Path::new(path).to_path_buf();
+    while !p.exists() {
+        if !p.pop() {
+            return 0;
+        }
+    }
+    match nix::sys::statvfs::statvfs(&p) {
+        Ok(stat) => stat.fragment_size() * stat.blocks_available(),
+        Err(e) => {
+            eprintln!("[disk_free_space] statvfs failed for {}: {}", p.display(), e);
+            0
+        }
+    }
+}
+
+pub fn show_file_dialog(select_folder: bool, title: &str, default_path: &str) -> String {
+    if which::which("zenity").is_ok() {
+        let mut cmd = Command::new("zenity");
+        if select_folder {
+            cmd.arg("--file-selection").arg("--directory");
+        } else {
+            cmd.arg("--file-selection");
+        }
+        cmd.arg("--title").arg(title);
+        if !default_path.is_empty() {
+            cmd.arg("--filename").arg(default_path);
+        }
+
+        match cmd.output() {
+            Ok(output) if output.status.success() => {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return path;
+            }
+            _ => {}
+        }
+    }
+
+    if which::which("kdialog").is_ok() {
+        let mut cmd = Command::new("kdialog");
+        if select_folder {
+            cmd.arg("--getexistingdirectory");
+            if !default_path.is_empty() {
+                cmd.arg(default_path);
+            }
+        } else {
+            cmd.arg("--getopenfilename");
+            if !default_path.is_empty() {
+                cmd.arg(default_path);
+            }
+        }
+        cmd.arg("--title").arg(title);
+
+        match cmd.output() {
+            Ok(output) if output.status.success() => {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return path;
+            }
+            _ => {}
+        }
+    }
+
+    String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_sanitize_slug() {
+        assert_eq!(sanitize_slug("Elden Ring"), "elden-ring");
+        assert_eq!(sanitize_slug("Game!!!"), "game");
+        assert_eq!(sanitize_slug("Test  Game"), "test-game");
+        assert_eq!(sanitize_slug("Super Mario 64"), "super-mario-64");
+    }
+
+    #[test]
+    fn test_desktop_filename() {
+        assert_eq!(desktop_filename("elden-ring", "abc123"), "omikuji.elden-ring-abc123.desktop");
+    }
+
+    #[test]
+    fn test_get_game_browse_dir() {
+        let game = Game::new("Test".to_string(), PathBuf::from("/games/test/game.exe"));
+        let dir = get_game_browse_dir(&game).unwrap();
+        assert_eq!(dir, PathBuf::from("/games/test"));
+    }
+
+    #[test]
+    fn test_get_game_browse_dir_with_working_dir() {
+        use std::env;
+
+        let temp_dir = env::temp_dir();
+        let mut game = Game::new("Test".to_string(), PathBuf::from("/games/test/game.exe"));
+        game.launch.working_dir = temp_dir.to_string_lossy().to_string();
+        let dir = get_game_browse_dir(&game).unwrap();
+        assert_eq!(dir, temp_dir);
+    }
+
+    #[test]
+    fn test_duplicate_game_resets_fields() {
+        let mut game = Game::new("Test".to_string(), PathBuf::from("/games/test/game.exe"));
+        game.metadata.id = "original".to_string();
+        game.metadata.playtime = 123.5;
+        game.metadata.last_played = "Apr 15, 2026".to_string();
+
+        let dup = duplicate_game(&game).unwrap();
+
+        assert_ne!(dup.metadata.id, "original");
+        assert_eq!(dup.metadata.name, "Test (Copy)");
+        assert_eq!(dup.metadata.playtime, 0.0);
+        assert_eq!(dup.metadata.last_played, "");
+        assert_eq!(dup.metadata.exe, game.metadata.exe);
+    }
+}

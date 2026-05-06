@@ -1,0 +1,100 @@
+
+use anyhow::{anyhow, Result};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use crate::downloads::legendary::find_legendary;
+
+pub fn eos_overlay_dir() -> PathBuf {
+    crate::runtime_dir().join("eos_overlay")
+}
+
+pub fn is_installed() -> bool {
+    eos_overlay_dir().join("EOSOverlayRenderer-Win64-Shipping.exe").exists() ||
+    dirs::config_dir()
+        .map(|c| c.join("legendary").join("overlay_install.json").exists())
+        .unwrap_or(false)
+}
+
+pub fn install() -> Result<()> {
+    let bin = find_legendary().ok_or_else(|| anyhow!("legendary not found"))?;
+    let path = eos_overlay_dir();
+    std::fs::create_dir_all(&path)?;
+
+    eprintln!("[Epic] Installing EOS Overlay to {} ...", path.display());
+    
+    let status = Command::new(&bin)
+        .arg("eos-overlay")
+        .arg("install")
+        .arg("--path")
+        .arg(&path)
+        .arg("-y")
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("legendary eos-overlay install failed");
+    }
+
+    Ok(())
+}
+
+pub fn enable(prefix: &Path) -> Result<()> {
+    if !is_installed() {
+        install()?;
+    }
+
+    let bin = find_legendary().ok_or_else(|| anyhow!("legendary not found"))?;
+    
+    eprintln!("[Epic] Enabling EOS Overlay for prefix {} ...", prefix.display());
+
+    let status = Command::new(&bin)
+        .arg("eos-overlay")
+        .arg("enable")
+        .arg("--prefix")
+        .arg(prefix)
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("legendary eos-overlay enable failed");
+    }
+
+    Ok(())
+}
+
+pub fn disable(prefix: &Path) -> Result<()> {
+    let bin = find_legendary().ok_or_else(|| anyhow!("legendary not found"))?;
+    
+    eprintln!("[Epic] Disabling EOS Overlay for prefix {} ...", prefix.display());
+
+    let status = Command::new(&bin)
+        .arg("eos-overlay")
+        .arg("disable")
+        .arg("--prefix")
+        .arg(prefix)
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("legendary eos-overlay disable failed");
+    }
+
+    Ok(())
+}
+
+pub fn is_enabled(prefix: &Path) -> bool {
+    let bin = match find_legendary() {
+        Some(b) => b,
+        None => return false,
+    };
+
+    let output = match Command::new(&bin)
+        .arg("eos-overlay")
+        .arg("info")
+        .arg("--prefix")
+        .arg(prefix)
+        .output() {
+            Ok(o) => o,
+            Err(_) => return false,
+        };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.contains("Overlay enabled: Yes")
+}

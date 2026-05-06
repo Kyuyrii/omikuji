@@ -1,0 +1,131 @@
+
+pub mod api;
+pub mod sophon;
+pub mod source;
+pub mod update;
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+// HoyoGame enum lived here to carry per-game biz_ids/data_folders/needs_patch as typed methods.
+// dropped 2026-04-26: per-game data now lives in manifest.strategy_config (asset repo); strategy code reads from there.
+// adding a new hoyo gacha = push manifest + push art + 1 line in gacha/index.json. zero rust touch.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HoyoEdition {
+    Global,
+    China,
+}
+
+impl HoyoEdition {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Global => "Global",
+            Self::China => "China",
+        }
+    }
+
+    pub fn api_base(&self) -> &'static str {
+        match self {
+            Self::Global => "https://sg-hyp-api.hoyoverse.com/hyp/hyp-connect/api",
+            Self::China => "https://hyp-api.mihoyo.com/hyp/hyp-connect/api",
+        }
+    }
+
+    pub fn launcher_id(&self) -> &'static str {
+        match self {
+            Self::Global => "VYTpXlbWo8",
+            Self::China => "jGHBHlcOq1",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum VoiceLocale {
+    English,
+    Japanese,
+    Korean,
+    Chinese,
+}
+
+impl VoiceLocale {
+    pub fn all() -> &'static [VoiceLocale] {
+        &[Self::English, Self::Japanese, Self::Korean, Self::Chinese]
+    }
+
+    pub fn api_name(&self) -> &'static str {
+        match self {
+            Self::English => "en-us",
+            Self::Japanese => "ja-jp",
+            Self::Korean => "ko-kr",
+            Self::Chinese => "zh-cn",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::English => "English",
+            Self::Japanese => "Japanese",
+            Self::Korean => "Korean",
+            Self::Chinese => "Chinese",
+        }
+    }
+
+    pub fn folder_name(&self) -> &'static str {
+        match self {
+            Self::English => "English(US)",
+            Self::Japanese => "Japanese",
+            Self::Korean => "Korean",
+            Self::Chinese => "Chinese",
+        }
+    }
+}
+
+pub const JADEITE_METADATA_URL: &str =
+    "https://codeberg.org/mkrsym1/jadeite/raw/branch/master/metadata.json";
+pub const JADEITE_API_URL: &str =
+    "https://codeberg.org/api/v1/repos/mkrsym1/jadeite/releases/latest";
+
+pub fn parse_voice_csv(csv: &str) -> Vec<VoiceLocale> {
+    csv.split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| {
+            VoiceLocale::all()
+                .iter()
+                .find(|v| v.api_name() == s)
+                .copied()
+        })
+        .collect()
+}
+
+const PUBLISHER_SLUG: &str = "hoyoverse";
+
+fn edition_id(edition: HoyoEdition) -> &'static str {
+    match edition {
+        HoyoEdition::Global => "global",
+        HoyoEdition::China => "china",
+    }
+}
+
+pub fn version_file(game_slug: &str, edition: HoyoEdition) -> PathBuf {
+    crate::gachas::state::version_file(PUBLISHER_SLUG, game_slug, edition_id(edition))
+}
+
+pub fn installed_version(game_slug: &str, edition: HoyoEdition) -> Option<String> {
+    crate::gachas::state::read_installed_version(PUBLISHER_SLUG, game_slug, edition_id(edition))
+}
+
+pub fn set_installed_version(game_slug: &str, edition: HoyoEdition, version: &str) {
+    crate::gachas::state::write_installed_version(
+        PUBLISHER_SLUG,
+        game_slug,
+        edition_id(edition),
+        version,
+    );
+}
+
+pub fn jadeite_dir() -> PathBuf {
+    crate::runtime_dir().join("jadeite")
+}
+
