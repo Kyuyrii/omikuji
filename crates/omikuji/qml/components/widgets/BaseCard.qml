@@ -8,6 +8,7 @@ Item {
 
     property string title: ""
     property url imageSource: ""
+    property url imageFallback: ""
     property color placeholderTint: "#1a1a2e"
     property string letter: ""
     property int letterFontSize: 48
@@ -106,6 +107,11 @@ Item {
                 asynchronous: true
                 sourceSize.width: 360
                 sourceSize.height: 480
+                onStatusChanged: {
+                    if (status === Image.Error && root.imageFallback != "" && source != root.imageFallback) {
+                        source = root.imageFallback
+                    }
+                }
                 // witout cache false QQuickPixmapCache holds decoded pixmaps long after the Image dies, so idle-unloading a store tab doesnt free RAM. some days update: IT STILL DOESNT FREE THE RAM. Fuck you Qt.
                 cache: false
                 visible: status === Image.Ready

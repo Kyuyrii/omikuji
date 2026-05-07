@@ -56,6 +56,11 @@ Item {
 
             title: modelData.name
             imageSource: "https://cdn.akamai.steamstatic.com/steam/apps/" + modelData.appid + "/library_600x900.jpg"
+            imageFallback: {
+                if (!gameModel) return ""
+                let local = gameModel.steam_local_library_image(String(modelData.appid))
+                return local ? "file://" + local : ""
+            }
             leftIconName: "steam"
             leftIconSize: 20
             selected: modelData.imported

@@ -346,6 +346,32 @@ pub fn is_game_installed(appid: &str) -> bool {
     get_installed_games().iter().any(|g| g.appid == appid)
 }
 
+pub fn find_local_library_image(appid: &str) -> Option<PathBuf> {
+    let appid_dir = find_steam_dir()?
+        .join("appcache")
+        .join("librarycache")
+        .join(appid);
+    if !appid_dir.exists() {
+        return None;
+    }
+    if let Ok(entries) = std::fs::read_dir(&appid_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let candidate = path.join("library_capsule.jpg");
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    let flat = appid_dir.join("library_600x900.jpg");
+    if flat.exists() {
+        return Some(flat);
+    }
+    None
+}
+
 pub fn get_game_install_dir(appid: &str) -> Option<PathBuf> {
     for steamapps_dir in get_steamapps_dirs() {
         let manifest_path = steamapps_dir.join(format!("appmanifest_{}.acf", appid));

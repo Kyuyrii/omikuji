@@ -233,6 +233,9 @@ pub mod qobject {
         #[qinvokable]
         fn steam_import_game(self: Pin<&mut GameModel>, appid: &QString, name: &QString) -> bool;
 
+        #[qinvokable]
+        fn steam_local_library_image(self: &GameModel, appid: &QString) -> QString;
+
         // blocking http inside the tokio runtime panics; we escape to an os thread first
         #[qinvokable]
         fn steam_sync_playtime(self: Pin<&mut GameModel>);
@@ -1626,6 +1629,14 @@ impl qobject::GameModel {
         match serde_json::to_string(&json_games) {
             Ok(json) => QString::from(&json),
             Err(_) => QString::from("[]"),
+        }
+    }
+
+    fn steam_local_library_image(&self, appid: &QString) -> QString {
+        let appid_str = appid.to_string();
+        match omikuji_core::steam::local::find_local_library_image(&appid_str) {
+            Some(path) => QString::from(&*path.to_string_lossy()),
+            None => QString::default(),
         }
     }
 
