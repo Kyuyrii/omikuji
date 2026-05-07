@@ -65,8 +65,13 @@ pub fn desktop_dir() -> Option<PathBuf> {
 }
 
 pub fn applications_dir() -> PathBuf {
+    if std::env::var("FLATPAK_ID").is_ok() {
+        return dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".local/share/applications");
+    }
     dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+        .unwrap_or_else(|| PathBuf::from("."))
         .join("applications")
 }
 
