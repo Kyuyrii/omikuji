@@ -112,7 +112,7 @@ Item {
                         source = root.imageFallback
                     }
                 }
-                // witout cache false QQuickPixmapCache holds decoded pixmaps long after the Image dies, so idle-unloading a store tab doesnt free RAM. some days update: IT STILL DOESNT FREE THE RAM. Fuck you Qt.
+                // without cache false QQuickPixmapCache holds decoded pixmaps long after the Image dies, so idle-unloading a store tab doesnt free RAM. some days update: IT STILL DOESNT FREE THE RAM. Fuck you Qt.
                 cache: false
                 visible: status === Image.Ready
                 opacity: root.imageOpacity
