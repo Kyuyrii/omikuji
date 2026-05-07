@@ -105,6 +105,14 @@ fn desktop_filename(slug: &str, id: &str) -> String {
     format!("omikuji.{}-{}.desktop", slug, id)
 }
 
+fn launcher_command() -> String {
+    if let Ok(app_id) = std::env::var("FLATPAK_ID") {
+        format!("flatpak run {}", app_id)
+    } else {
+        "omikuji".to_string()
+    }
+}
+
 fn generate_desktop_content(game: &Game) -> String {
     let slug = if game.metadata.slug.is_empty() {
         sanitize_slug(&game.metadata.name)
@@ -113,7 +121,7 @@ fn generate_desktop_content(game: &Game) -> String {
     };
 
     let icon = resolve_desktop_icon(game);
-    let exec = format!("omikuji run {}_{}", slug, game.metadata.id);
+    let exec = format!("{} run {}_{}", launcher_command(), slug, game.metadata.id);
 
     format!(
         "[Desktop Entry]\n\
