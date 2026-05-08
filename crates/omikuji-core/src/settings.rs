@@ -152,11 +152,10 @@ fn default_runners() -> Vec<ArchiveSource> {
             asset_pattern: ".tar.gz".into(),
             extract: "tar_gz".into(),
         },
-        // github mirror of dawn.wine/dwproton. gitea-shaped api, same json as github uh
         ArchiveSource {
             name: "Dawn Winery Proton".into(),
             kind: "proton".into(),
-            api_url: "https://api.github.com/repos/dawn-winery/dwproton-mirror/releases".into(),
+            api_url: "https://dawn.wine/api/v1/repos/dawn-winery/dwproton/releases".into(),
             asset_pattern: ".tar.xz".into(),
             extract: "tar_xz".into(),
         },
