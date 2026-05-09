@@ -3,6 +3,7 @@ import "../dialogs"
 
 Item {
     id: ctrl
+    anchors.fill: parent
 
     property var gameModel: null
 
