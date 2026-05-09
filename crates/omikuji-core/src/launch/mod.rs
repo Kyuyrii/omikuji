@@ -352,6 +352,8 @@ pub fn build_env(game: &Game, variant: WineVariant, wine_exe: &Path) -> HashMap<
         env.insert(k, v);
     }
 
+    env.insert("WINEDEBUG".to_string(), String::new());
+
     let prefix = resolve_prefix(game);
     env.insert("WINEPREFIX".to_string(), prefix.to_string_lossy().to_string());
     env.insert("WINEARCH".to_string(), game.wine.prefix_arch.clone());
