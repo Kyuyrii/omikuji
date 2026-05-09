@@ -33,7 +33,7 @@ Item {
             { label: "System",    kind: "system" }
         ]
         if (root.config["source.kind"] === "epic") {
-            base.push({ label: "Epic", kind: "epic", icon: "epic" })
+            base.push({ label: "Epic", kind: "epic", icon: "shield_moon" })
         }
         return base
     }
@@ -45,6 +45,9 @@ Item {
 
     onGameIndexChanged: loadGame()
     Component.onCompleted: loadGame()
+    Component.onDestruction: {
+        if (gameModel) gameModel.discard_draft()
+    }
 
     function loadGame() {
         if (!gameModel || gameIndex < 0) {
@@ -56,12 +59,12 @@ Item {
         let data = gameModel.get_game(gameIndex)
         gameData = data
         gameId = data ? data["gameId"] : ""
-        config = gameModel.get_game_config(gameIndex)
+        config = gameModel.begin_edit_game(gameIndex)
     }
 
     function save() {
         if (gameModel && gameId !== "") {
-            gameModel.save_game(gameId)
+            gameModel.commit_edit_game(gameId)
         }
         root.saveRequested(gameIndex)
     }
@@ -71,13 +74,16 @@ Item {
         root.saveAndPlayRequested(gameIndex)
     }
 
+    function cancel() {
+        if (gameModel) gameModel.discard_draft()
+        root.cancelRequested()
+    }
+
     function updateField(key, value) {
         if (gameModel && gameId !== "") {
             let strVal = String(value)
-            let currentIndex = findIndex()
-            if (currentIndex >= 0) {
-                gameModel.update_game_field(currentIndex, key, strVal)
-                config = gameModel.get_game_config(currentIndex)
+            if (gameModel.update_draft_field(key, strVal)) {
+                config = gameModel.get_draft_config()
             }
         }
     }
@@ -92,10 +98,9 @@ Item {
         return -1
     }
 
-    // re-read config after bridge invokables that modify the toml outside update_game_field
     function refreshConfig() {
         let idx = findIndex()
-        if (idx >= 0) config = gameModel.get_game_config(idx)
+        if (idx >= 0) config = gameModel.begin_edit_game(idx)
     }
 
     Item {
@@ -183,7 +188,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
 
-        onCancelClicked: root.cancelRequested()
+        onCancelClicked: root.cancel()
         onSaveClicked: root.save()
         onSaveAndPlayClicked: root.saveAndPlay()
     }

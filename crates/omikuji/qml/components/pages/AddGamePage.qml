@@ -67,7 +67,7 @@ Item {
     }
 
     function cancel() {
-        if (gameModel) gameModel.discard_new_game()
+        if (gameModel) gameModel.discard_draft()
         root.cancelRequested()
     }
 

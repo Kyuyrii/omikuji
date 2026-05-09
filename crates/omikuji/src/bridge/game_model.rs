@@ -106,7 +106,13 @@ pub mod qobject {
         fn commit_new_game(self: Pin<&mut GameModel>) -> QString;
 
         #[qinvokable]
-        fn discard_new_game(self: Pin<&mut GameModel>);
+        fn discard_draft(self: Pin<&mut GameModel>);
+
+        #[qinvokable]
+        fn begin_edit_game(self: Pin<&mut GameModel>, index: i32) -> QMap_QString_QVariant;
+
+        #[qinvokable]
+        fn commit_edit_game(self: Pin<&mut GameModel>, game_id: &QString) -> bool;
 
         #[qinvokable]
         fn remove_game(self: Pin<&mut GameModel>, index: i32);
@@ -891,8 +897,42 @@ impl qobject::GameModel {
         QString::from(&*self.library.game.last().unwrap().metadata.id)
     }
 
-    fn discard_new_game(mut self: Pin<&mut Self>) {
+    fn discard_draft(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().get_mut().draft = None;
+    }
+
+    fn begin_edit_game(mut self: Pin<&mut Self>, index: i32) -> QMap<QMapPair_QString_QVariant> {
+        let idx = index as usize;
+        let mut m = QMap::<QMapPair_QString_QVariant>::default();
+        let cloned = self.library.game.get(idx).cloned();
+        if let Some(ref game) = cloned {
+            populate_config_map(game, &mut m);
+        }
+        self.as_mut().rust_mut().get_mut().draft = cloned;
+        m
+    }
+
+    fn commit_edit_game(mut self: Pin<&mut Self>, game_id: &QString) -> bool {
+        let id = game_id.to_string();
+        let Some(draft) = self.as_mut().rust_mut().get_mut().draft.take() else {
+            eprintln!("commit_edit_game: no draft");
+            return false;
+        };
+        let Some(idx) = self.library.game.iter().position(|g| g.metadata.id == id) else {
+            eprintln!("commit_edit_game: game id '{}' not found", id);
+            self.as_mut().rust_mut().get_mut().draft = Some(draft);
+            return false;
+        };
+        if let Err(e) = Library::save_game_static(&draft) {
+            eprintln!("commit_edit_game: failed to save: {}", e);
+            self.as_mut().rust_mut().get_mut().draft = Some(draft);
+            return false;
+        }
+        self.as_mut().rust_mut().get_mut().library.game[idx] = draft;
+        let model_idx = self.as_ref().model_index(idx as i32, 0, &QModelIndex::default());
+        let roles = cxx_qt_lib::QList::<i32>::default();
+        self.as_mut().data_changed(&model_idx, &model_idx, &roles);
+        true
     }
 
     fn remove_game(mut self: Pin<&mut Self>, index: i32) {
