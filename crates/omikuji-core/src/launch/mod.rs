@@ -473,6 +473,14 @@ pub fn resolve_wine_exe(variant: WineVariant, version: &str) -> Result<PathBuf> 
         return resolve_steam_runner(steam_version);
     }
 
+    if let Some(name) = version.strip_prefix("system:") {
+        if let Some(path) = crate::runners::system_wine_paths().get(name) {
+            return Ok(path.clone());
+        }
+        eprintln!("system wine '{}' not found, falling back to wine on PATH", name);
+        return Ok(PathBuf::from("wine"));
+    }
+
     match variant {
         WineVariant::System => {
             Ok(PathBuf::from("wine"))

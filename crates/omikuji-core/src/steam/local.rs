@@ -8,7 +8,9 @@ const STEAM_DATA_DIRS: &[&str] = &[
     "~/.steam",
     "~/.local/share/steam",
     "~/.local/share/Steam",
+    "~/snap/steam/common/.local/share/Steam", // well lutris has it... soooo
     "~/.steam/steam",
+    "~/.var/app/com.valvesoftware.Steam/data/steam",
     "~/.var/app/com.valvesoftware.Steam/data/Steam", // flatpak (didnt test so yikes)
     "/usr/share/steam",
     "/usr/local/share/steam",
@@ -23,6 +25,18 @@ pub fn find_steam_dir() -> Option<PathBuf> {
         }
     }
     None
+}
+
+pub fn iter_compat_tools_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![];
+    for dir in STEAM_DATA_DIRS {
+        let expanded = shellexpand::tilde(dir);
+        let ctd = Path::new(expanded.as_ref()).join("compatibilitytools.d");
+        if ctd.is_dir() {
+            dirs.push(ctd);
+        }
+    }
+    dirs
 }
 
 pub fn get_steamapps_dirs() -> Vec<PathBuf> {
@@ -421,8 +435,8 @@ pub fn find_steam_proton_version(appid: &str) -> Option<String> {
 //   3. steamapps/common/Proton {M.m}, derived from build IDs like "8.0-103"
 // validates that {dir}/files/ exists to avoid returning a half-empty folder.
 pub fn find_proton_install(name: &str) -> Option<PathBuf> {
-    if let Some(steam_dir) = find_steam_dir() {
-        let p = steam_dir.join("compatibilitytools.d").join(name);
+    for ctd in iter_compat_tools_dirs() {
+        let p = ctd.join(name);
         if p.join("files").exists() {
             return Some(p);
         }
@@ -461,24 +475,27 @@ fn proton_version_major_minor(s: &str) -> Option<String> {
 
 // GE-Proton is prioritized because ge proton = cool
 pub fn default_proton_install() -> Option<PathBuf> {
-    if let Some(steam_dir) = find_steam_dir() {
-        let ctd = steam_dir.join("compatibilitytools.d");
+    let mut all: Vec<PathBuf> = Vec::new();
+    for ctd in iter_compat_tools_dirs() {
         if let Ok(entries) = std::fs::read_dir(&ctd) {
-            let mut all: Vec<PathBuf> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.join("files").exists())
-                .collect();
-            all.sort_by(|a, b| {
-                let an = a.file_name().unwrap_or_default().to_string_lossy().to_string();
-                let bn = b.file_name().unwrap_or_default().to_string_lossy().to_string();
-                let a_ge = an.starts_with("GE-Proton");
-                let b_ge = bn.starts_with("GE-Proton");
-                b_ge.cmp(&a_ge).then_with(|| bn.cmp(&an))
-            });
-            if let Some(p) = all.into_iter().next() {
-                return Some(p);
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.join("files").exists() {
+                    all.push(p);
+                }
             }
+        }
+    }
+    if !all.is_empty() {
+        all.sort_by(|a, b| {
+            let an = a.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let bn = b.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let a_ge = an.starts_with("GE-Proton");
+            let b_ge = bn.starts_with("GE-Proton");
+            b_ge.cmp(&a_ge).then_with(|| bn.cmp(&an))
+        });
+        if let Some(p) = all.into_iter().next() {
+            return Some(p);
         }
     }
     for dir in get_steamapps_dirs() {

@@ -1,6 +1,7 @@
 use crate::archive_source;
 use crate::settings::ArchiveSource;
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -57,15 +58,15 @@ pub fn list_installed_runners() -> Vec<String> {
         }
     }
     
-    if let Some(steam_dir) = crate::steam::local::find_steam_dir()
-        && let Ok(entries) = std::fs::read_dir(steam_dir.join("compatibilitytools.d"))
-    {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() && path.join("files").exists()
-                && let Some(name) = path.file_name().and_then(|n| n.to_str())
-            {
-                runners.push(format!("steam:{name}"));
+    for ctd in crate::steam::local::iter_compat_tools_dirs() {
+        if let Ok(entries) = std::fs::read_dir(&ctd) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() && path.join("files").exists()
+                    && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                {
+                    runners.push(format!("steam:{name}"));
+                }
             }
         }
     }
@@ -81,14 +82,49 @@ pub fn list_installed_runners() -> Vec<String> {
             }
         }
     }
-    
+
+    for name in system_wine_paths().keys() {
+        runners.push(format!("system:{name}"));
+    }
+
     if which::which("wine").is_ok() {
         runners.push("system".to_string());
     }
-    
+
     runners.sort();
     runners.dedup();
     runners
+}
+
+pub fn system_wine_paths() -> HashMap<String, PathBuf> {
+    let mut paths = HashMap::new();
+
+    let hardcoded: &[(&str, &str)] = &[
+        ("winehq-devel", "/opt/wine-devel/bin/wine"),
+        ("winehq-staging", "/opt/wine-staging/bin/wine"),
+        ("wine-development", "/usr/lib/wine-development/wine"),
+    ];
+    for (name, path) in hardcoded {
+        let p = PathBuf::from(path);
+        if p.is_file() {
+            paths.insert((*name).to_string(), p);
+        }
+    }
+
+    if let Ok(entries) = std::fs::read_dir("/usr/lib") {
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            let Some(name) = dir.file_name().and_then(|n| n.to_str()) else { continue };
+            if name.starts_with("wine-") && !paths.contains_key(name) {
+                let wine_bin = dir.join("bin/wine");
+                if wine_bin.is_file() {
+                    paths.insert(name.to_string(), wine_bin);
+                }
+            }
+        }
+    }
+
+    paths
 }
 
 pub fn list_gpus() -> Vec<(String, String)> {
