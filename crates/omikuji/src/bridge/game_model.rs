@@ -1088,6 +1088,13 @@ impl qobject::GameModel {
             return false;
         }
 
+        if game.runner.runner_type == "steam" {
+            omikuji_core::notifications::info(
+                &game.metadata.name,
+                "Launching through Steam... any errors will show in Steam itself",
+            );
+        }
+
         // pre-launch update check for gacha games only. network errors are intentionally swallowed so a hiccup doesnt block the user from playing.
         if game.source.kind == "gacha"
             && let Some(info) = blocking_check_gacha_update(&game.source.app_id) {
