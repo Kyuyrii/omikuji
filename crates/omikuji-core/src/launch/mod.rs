@@ -5,6 +5,19 @@ use std::process::{Command, Stdio};
 
 use crate::library::Game;
 
+#[derive(Debug)]
+pub struct ComponentMissing {
+    pub name: String,
+}
+
+impl std::fmt::Display for ComponentMissing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "`{}` not found", self.name)
+    }
+}
+
+impl std::error::Error for ComponentMissing {}
+
 pub struct LaunchConfig {
     pub command: Vec<String>,
     pub env: HashMap<String, String>,
@@ -58,7 +71,7 @@ pub fn build_launch(game: &Game) -> Result<LaunchConfig> {
 
     let mut command = if game.is_epic() {
         let legendary = crate::downloads::legendary::find_legendary()
-            .ok_or_else(|| anyhow::anyhow!("legendary not found — required for Epic Games"))?;
+            .ok_or_else(|| anyhow::Error::new(ComponentMissing { name: "Legendary".to_string() }))?;
         let prefix = resolve_prefix(game);
         // legendary wants the source app_id, falling back to metadata.id for games impoted before the source section existed
         let app_id = if !game.source.app_id.is_empty() {
@@ -84,6 +97,9 @@ pub fn build_launch(game: &Game) -> Result<LaunchConfig> {
         }
         cmd
     } else {
+        if !game.metadata.exe.as_os_str().is_empty() && !game.metadata.exe.exists() {
+            anyhow::bail!("Game executable not found at `{}`", game.metadata.exe.display());
+        }
         let mut cmd = vec![wine_exe.to_string_lossy().to_string()];
         if !game.metadata.exe.as_os_str().is_empty() {
             // jadeite spawns the game process itself, so extra args go after `--`
@@ -479,8 +495,7 @@ pub fn resolve_wine_exe(variant: WineVariant, version: &str) -> Result<PathBuf> 
         if let Some(path) = crate::runners::system_wine_paths().get(name) {
             return Ok(path.clone());
         }
-        eprintln!("system wine '{}' not found, falling back to wine on PATH", name);
-        return Ok(PathBuf::from("wine"));
+        anyhow::bail!("Runner `{}` not found.", name);
     }
 
     match variant {
@@ -494,25 +509,17 @@ pub fn resolve_wine_exe(variant: WineVariant, version: &str) -> Result<PathBuf> 
             if wine_bin.exists() {
                 Ok(wine_bin)
             } else {
-                eprintln!("wine-ge not found: {}, falling back to system wine", wine_bin.display());
-                Ok(PathBuf::from("wine"))
+                anyhow::bail!("Runner `{}` not found.", version);
             }
         }
         WineVariant::Proton => {
-            let umu_run = find_umu_run().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Proton requires umu-run (umu-launcher) but it's not found. \
-                     Options:\n\
-                     1. Install umu-run from your distro (package 'umu-launcher')\n\
-                     2. Use Wine-GE instead of Proton-GE\n\
-                     3. Copy Lutris's umu-run to ~/.local/share/omikuji/runtime/"
-                )
-            })?;
+            let umu_run = find_umu_run()
+                .ok_or_else(|| anyhow::Error::new(ComponentMissing { name: "umu-run".to_string() }))?;
 
             let runner_dir = runners_dir().join(version);
             let proton_files = runner_dir.join("files");
             if !proton_files.exists() {
-                anyhow::bail!("Proton not found at: {}", runner_dir.display());
+                anyhow::bail!("Runner `{}` not found.", version);
             }
 
             Ok(umu_run)
@@ -521,17 +528,12 @@ pub fn resolve_wine_exe(variant: WineVariant, version: &str) -> Result<PathBuf> 
 }
 
 fn resolve_steam_runner(version: &str) -> Result<PathBuf> {
-    let install = crate::steam::local::resolve_or_default_proton(Some(version))
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "No Proton install available. Asked for '{}', couldn't find it or any fallback Proton in compatibilitytools.d / steamapps/common",
-                version
-            )
-        })?;
+    let install = crate::steam::local::find_proton_install(version)
+        .ok_or_else(|| anyhow::anyhow!("Runner `{}` not found.", version))?;
 
     if install.join("files").exists() {
         let umu_run = find_umu_run()
-            .ok_or_else(|| anyhow::anyhow!("umu-run required for Proton but not found"))?;
+            .ok_or_else(|| anyhow::Error::new(ComponentMissing { name: "umu-run".to_string() }))?;
         return Ok(umu_run);
     }
 

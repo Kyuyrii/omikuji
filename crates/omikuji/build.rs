@@ -59,6 +59,7 @@ fn main() {
                 "qml/components/dialogs/GachaInstallDialog.qml",
                 "qml/components/dialogs/GameCategoriesDialog.qml",
                 "qml/components/dialogs/GogInstallDialog.qml",
+                "qml/components/dialogs/ErrorDialog.qml",
                 "qml/components/dialogs/GameLogsWindow.qml",
                 "qml/components/dialogs/UpdateAvailableDialog.qml",
                 // downloads

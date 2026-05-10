@@ -82,6 +82,16 @@ pub mod qobject {
         #[cxx_name = "gameLogAppended"]
         fn game_log_appended(self: Pin<&mut GameModel>, game_id: &QString);
 
+        #[qsignal]
+        fn error_required(
+            self: Pin<&mut GameModel>,
+            game_id: &QString,
+            display_name: &QString,
+            title: &QString,
+            message: &QString,
+            action: &QString,
+        );
+
         #[cxx_name = "rowCount"]
         #[cxx_override]
         fn row_count(self: &GameModel, parent: &QModelIndex) -> i32;
@@ -198,6 +208,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn drain_update_notifications(self: Pin<&mut GameModel>);
+
+        #[qinvokable]
+        fn drain_errors(self: Pin<&mut GameModel>);
+
+        #[qinvokable]
+        fn index_of_id(self: &GameModel, game_id: &QString) -> i32;
 
         #[qinvokable]
         fn enqueue_game_update(
@@ -1117,6 +1133,7 @@ impl qobject::GameModel {
 
                 // spawn os thread + build fresh runtime: we're already inside the #[tokio::main] runtime, cant block_on from here directly
                 let game_name = game.metadata.name.clone();
+                let game_id = game.metadata.id.clone();
                 let logs_dir = omikuji_core::logs_dir();
                 std::thread::spawn(move || {
                     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1128,6 +1145,14 @@ impl qobject::GameModel {
                             }
                             Err(e) => {
                                 eprintln!("failed to launch '{}': {}", game_name, e);
+                                omikuji_core::process::notify_error(
+                                    omikuji_core::process::ErrorNotification {
+                                        game_id,
+                                        title: "Couldn't launch".to_string(),
+                                        message: e.to_string(),
+                                        action: omikuji_core::process::ErrorAction::OpenGameSettings,
+                                    },
+                                );
                             }
                         }
                     });
@@ -1137,6 +1162,19 @@ impl qobject::GameModel {
             }
             Err(e) => {
                 eprintln!("failed to build launch config: {}", e);
+                let action = if e.downcast_ref::<omikuji_core::launch::ComponentMissing>().is_some() {
+                    omikuji_core::process::ErrorAction::OpenGlobalSettings
+                } else {
+                    omikuji_core::process::ErrorAction::OpenGameSettings
+                };
+                omikuji_core::process::notify_error(
+                    omikuji_core::process::ErrorNotification {
+                        game_id: game.metadata.id.clone(),
+                        title: "Couldn't launch".to_string(),
+                        message: e.to_string(),
+                        action,
+                    },
+                );
                 false
             }
         }
@@ -1311,6 +1349,7 @@ impl qobject::GameModel {
             }
         };
         let display_name = game.metadata.name.clone();
+        let game_id_owned = game.metadata.id.clone();
         let tool_label = tool_name.clone();
         // prefix-init and umu-run startup can be slow, detach so the ui doesnt block
         std::thread::spawn(move || match omikuji_core::wine_tools::run(&game, t) {
@@ -1318,9 +1357,13 @@ impl qobject::GameModel {
                 omikuji_core::notifications::info(&display_name, format!("Opened {}", tool_label));
             }
             Err(e) => {
-                omikuji_core::notifications::error(
-                    &display_name,
-                    format!("{} failed: {}", tool_label, e),
+                omikuji_core::process::notify_error(
+                    omikuji_core::process::ErrorNotification {
+                        game_id: game_id_owned,
+                        title: format!("{} failed", tool_label),
+                        message: format!("{}", e),
+                        action: omikuji_core::process::ErrorAction::OpenGameSettings,
+                    },
                 );
             }
         });
@@ -1343,6 +1386,7 @@ impl qobject::GameModel {
             return;
         };
         let display_name = game.metadata.name.clone();
+        let game_id_owned = game.metadata.id.clone();
         let path = std::path::PathBuf::from(&exe);
         let file_label = path
             .file_name()
@@ -1357,9 +1401,13 @@ impl qobject::GameModel {
                     );
                 }
                 Err(e) => {
-                    omikuji_core::notifications::error(
-                        &display_name,
-                        format!("Run failed: {}", e),
+                    omikuji_core::process::notify_error(
+                        omikuji_core::process::ErrorNotification {
+                            game_id: game_id_owned,
+                            title: "Couldn't run executable".to_string(),
+                            message: format!("`{}` failed: {}", file_label, e),
+                            action: omikuji_core::process::ErrorAction::OpenGameSettings,
+                        },
                     );
                 }
             }
@@ -1440,6 +1488,35 @@ impl qobject::GameModel {
                 n.can_diff,
             );
         }
+    }
+
+    fn drain_errors(mut self: Pin<&mut Self>) {
+        for n in omikuji_core::process::take_errors() {
+            let display_name = self
+                .library
+                .game
+                .iter()
+                .find(|g| g.metadata.id == n.game_id)
+                .map(|g| g.metadata.name.clone())
+                .unwrap_or_default();
+            self.as_mut().error_required(
+                &QString::from(&n.game_id),
+                &QString::from(&display_name),
+                &QString::from(&n.title),
+                &QString::from(&n.message),
+                &QString::from(n.action.as_str()),
+            );
+        }
+    }
+
+    fn index_of_id(&self, game_id: &QString) -> i32 {
+        let needle = game_id.to_string();
+        self.library
+            .game
+            .iter()
+            .position(|g| g.metadata.id == needle)
+            .map(|i| i as i32)
+            .unwrap_or(-1)
     }
 
     fn enqueue_game_update(
@@ -2245,9 +2322,13 @@ impl qobject::GameModel {
             if let Some(path) = install_path
                 && path.exists()
                     && let Err(e) = std::fs::remove_dir_all(&path) {
-                        omikuji_core::notifications::error(
-                            &name,
-                            format!("failed to remove install dir: {}", e),
+                        omikuji_core::process::notify_error(
+                            omikuji_core::process::ErrorNotification {
+                                game_id: game_id_owned.clone(),
+                                title: "Uninstall failed".to_string(),
+                                message: format!("Failed to remove install dir: {}", e),
+                                action: omikuji_core::process::ErrorAction::None,
+                            },
                         );
                         return;
                     }
@@ -2592,12 +2673,19 @@ impl qobject::GameModel {
         let game_id_owned = game.metadata.id.clone();
 
         std::thread::spawn(move || {
-            omikuji_core::notifications::info(&name, "Uninstalling via legendary...");
-
             let Some(legendary_bin) = omikuji_core::downloads::legendary::find_legendary() else {
-                omikuji_core::notifications::error(&name, "legendary not found");
+                omikuji_core::process::notify_error(
+                    omikuji_core::process::ErrorNotification {
+                        game_id: game_id_owned.clone(),
+                        title: "Uninstall failed".to_string(),
+                        message: "`Legendary` not found".to_string(),
+                        action: omikuji_core::process::ErrorAction::OpenGlobalSettings,
+                    },
+                );
                 return;
             };
+
+            omikuji_core::notifications::info(&name, "Uninstalling via Legendary...");
 
             let result = std::process::Command::new(&legendary_bin)
                 .arg("-y")
@@ -2615,15 +2703,23 @@ impl qobject::GameModel {
                 }
                 Ok(out) => {
                     let err = String::from_utf8_lossy(&out.stderr);
-                    omikuji_core::notifications::error(
-                        &name,
-                        format!("legendary uninstall failed: {}", err.trim()),
+                    omikuji_core::process::notify_error(
+                        omikuji_core::process::ErrorNotification {
+                            game_id: game_id_owned.clone(),
+                            title: "Uninstall failed".to_string(),
+                            message: format!("`legendary` returned an error: {}", err.trim()),
+                            action: omikuji_core::process::ErrorAction::None,
+                        },
                     );
                 }
                 Err(e) => {
-                    omikuji_core::notifications::error(
-                        &name,
-                        format!("couldn't run legendary: {}", e),
+                    omikuji_core::process::notify_error(
+                        omikuji_core::process::ErrorNotification {
+                            game_id: game_id_owned.clone(),
+                            title: "Uninstall failed".to_string(),
+                            message: format!("Couldn't run `legendary`: {}", e),
+                            action: omikuji_core::process::ErrorAction::None,
+                        },
                     );
                 }
             }

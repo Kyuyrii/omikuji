@@ -4,6 +4,7 @@ import "../dialogs"
 Item {
     id: ctrl
     anchors.fill: parent
+    z: 2000
 
     property var gameModel: null
 

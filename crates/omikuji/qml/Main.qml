@@ -304,6 +304,7 @@ ApplicationWindow {
             gameModel.check_exited_games()
             gameModel.drain_notifications()
             gameModel.drain_update_notifications()
+            gameModel.drain_errors()
             gameModel.drain_install_sizes()
             gameModel.drain_file_dialog_results()
             gameModel.drain_game_log_events()
@@ -330,6 +331,15 @@ ApplicationWindow {
                 // stringified u64 to avoid js number precision loss
                 downloadBytes: parseInt(downloadSize, 10) || 0,
                 canDiff: canDiff
+            })
+        }
+        function onError_required(gameId, displayName, title, message, action) {
+            errorDialog.show({
+                gameId: gameId,
+                displayName: displayName,
+                title: title,
+                message: message,
+                action: action
             })
         }
     }
@@ -1010,6 +1020,22 @@ property real cardZoom: uiSettings.cardZoom
                 toastManager.show("info", "Update queued", root.selectedGame ? root.selectedGame.name : "")
             } else {
                 toastManager.show("error", "Update failed", "Could not enqueue update")
+            }
+        }
+    }
+
+    ErrorDialog {
+        id: errorDialog
+        anchors.fill: parent
+        onActionRequested: (act, gid) => {
+            if (act === "open_game_settings") {
+                let idx = gameModel.index_of_id(gid)
+                if (idx >= 0) {
+                    root.settingsGameIndex = idx
+                    root.currentView = "settings"
+                }
+            } else if (act === "open_global_settings") {
+                root.currentView = "globalSettings"
             }
         }
     }

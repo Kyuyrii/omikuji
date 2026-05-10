@@ -389,6 +389,52 @@ pub fn take_update_notifications() -> Vec<UpdateNotification> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorAction {
+    None,
+    OpenGameSettings,
+    OpenGlobalSettings,
+}
+
+impl ErrorAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::OpenGameSettings => "open_game_settings",
+            Self::OpenGlobalSettings => "open_global_settings",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ErrorNotification {
+    pub game_id: String,
+    pub title: String,
+    pub message: String,
+    pub action: ErrorAction,
+}
+
+lazy_static::lazy_static! {
+    static ref ERRORS: Mutex<VecDeque<ErrorNotification>> = Mutex::new(VecDeque::new());
+}
+
+pub fn notify_error(n: ErrorNotification) {
+    if let Ok(mut q) = ERRORS.lock() {
+        q.push_back(n);
+        while q.len() > 10 {
+            q.pop_front();
+        }
+    }
+}
+
+pub fn take_errors() -> Vec<ErrorNotification> {
+    if let Ok(mut q) = ERRORS.lock() {
+        q.drain(..).collect()
+    } else {
+        vec![]
+    }
+}
+
 pub fn manager() -> &'static ProcessManager {
     &MANAGER
 }
