@@ -18,6 +18,12 @@ Item {
 
     property string runnerType: config["runner.type"] || ""
     property bool isWine: runnerType === "" || runnerType === "wine"
+    property bool isProtonWine: isProtonVersion(config["wine.version"] || "")
+
+    function isProtonVersion(version) {
+        let v = String(version || "").toLowerCase()
+        return v.indexOf("proton") !== -1
+    }
 
     Column {
         id: content
@@ -127,7 +133,7 @@ Item {
                     width: parent.width
                     columns: 4
                     columnSpacing: 8
-                    rowSpacing: 0
+                    rowSpacing: 12
 
                     Text {
                         text: "Esync"
@@ -154,6 +160,29 @@ Item {
                     M3Switch {
                         checked: config["wine.fsync"] === true
                         onToggled: (val) => updateField("wine.fsync", val)
+                    }
+
+                    Text {
+                        text: "NTSync"
+                        color: root.isProtonWine ? theme.text : theme.textSubtle
+                        font.pixelSize: 15
+                        Layout.preferredWidth: 80
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    M3Switch {
+                        enabled: root.isProtonWine
+                        opacity: root.isProtonWine ? 1 : 0.45
+                        checked: config["wine.ntsync"] === true
+                        onToggled: (val) => updateField("wine.ntsync", val)
+                    }
+
+                    Text {
+                        text: "NTSync is only applied when the selected Wine version is Proton."
+                        color: theme.textSubtle
+                        font.pixelSize: 13
+                        visible: !root.isProtonWine
+                        Layout.columnSpan: 4
                     }
                 }
             }
