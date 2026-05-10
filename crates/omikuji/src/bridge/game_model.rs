@@ -1235,18 +1235,22 @@ impl qobject::GameModel {
 
     fn refetch_media(mut self: Pin<&mut Self>, game_id: &QString) {
         let id = game_id.to_string();
-        let name = match self.library.game.iter().find(|g| g.metadata.id == id) {
-            Some(g) => g.metadata.name.clone(),
-            None => {
-                eprintln!("refetch_media: game id '{}' not found", id);
-                return;
-            }
+        let Some(game) = self.library.game.iter().find(|g| g.metadata.id == id) else {
+            eprintln!("refetch_media: game id '{}' not found", id);
+            return;
+        };
+        let name = game.metadata.name.clone();
+        let gacha_manifest = if game.source.kind == "gacha" {
+            omikuji_core::gachas::strategies::find_for_app_id(&game.source.app_id)
+                .map(|(m, _, _)| m)
+        } else {
+            None
         };
 
         let qt_thread = self.as_mut().qt_thread();
         std::thread::spawn(move || {
             let id_for_refresh = id.clone();
-            media::fetch_media_blocking_with(&id, &name, |_| {
+            let on_asset = move |_: &media::MediaType| {
                 let id_inner = id_for_refresh.clone();
                 let _ = qt_thread.queue(move |mut obj: Pin<&mut qobject::GameModel>| {
                     let Some(row) = obj.library.game.iter().position(|g| g.metadata.id == id_inner) else {
@@ -1256,7 +1260,11 @@ impl qobject::GameModel {
                     let roles = cxx_qt_lib::QList::<i32>::default();
                     obj.as_mut().data_changed(&idx, &idx, &roles);
                 });
-            });
+            };
+            match gacha_manifest {
+                Some(m) => omikuji_core::gachas::art::fetch_into_library_cache(&m, &id, on_asset),
+                None => { let _ = media::fetch_media_blocking_with(&id, &name, on_asset); }
+            }
         });
     }
 
@@ -2621,21 +2629,25 @@ impl qobject::GameModel {
         }
 
         let id_for_media = game.metadata.id.clone();
-        let name_for_media = game.metadata.name.clone();
+        let manifest_for_media = manifest.clone();
         let qt_thread = self.as_mut().qt_thread();
         std::thread::spawn(move || {
             let id_for_refresh = id_for_media.clone();
-            media::fetch_media_blocking_with(&id_for_media, &name_for_media, |_| {
-                let id_inner = id_for_refresh.clone();
-                let _ = qt_thread.queue(move |mut obj: Pin<&mut qobject::GameModel>| {
-                    let Some(row) = obj.library.game.iter().position(|g| g.metadata.id == id_inner) else {
-                        return;
-                    };
-                    let idx = obj.as_ref().model_index(row as i32, 0, &QModelIndex::default());
-                    let roles = cxx_qt_lib::QList::<i32>::default();
-                    obj.as_mut().data_changed(&idx, &idx, &roles);
-                });
-            });
+            omikuji_core::gachas::art::fetch_into_library_cache(
+                &manifest_for_media,
+                &id_for_media,
+                |_| {
+                    let id_inner = id_for_refresh.clone();
+                    let _ = qt_thread.queue(move |mut obj: Pin<&mut qobject::GameModel>| {
+                        let Some(row) = obj.library.game.iter().position(|g| g.metadata.id == id_inner) else {
+                            return;
+                        };
+                        let idx = obj.as_ref().model_index(row as i32, 0, &QModelIndex::default());
+                        let roles = cxx_qt_lib::QList::<i32>::default();
+                        obj.as_mut().data_changed(&idx, &idx, &roles);
+                    });
+                },
+            );
         });
 
         self.as_mut().begin_insert_rows(&QModelIndex::default(), row, row);

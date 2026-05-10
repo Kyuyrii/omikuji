@@ -61,6 +61,46 @@ pub fn resolve_art(manifest: &GachaManifest, kind: &str) -> String {
     String::new()
 }
 
+pub fn fetch_into_library_cache(
+    manifest: &GachaManifest,
+    game_id: &str,
+    mut on_asset: impl FnMut(&crate::media::MediaType),
+) {
+    let library_dir = crate::cache_dir().join("images");
+    if let Err(e) = std::fs::create_dir_all(&library_dir) {
+        eprintln!("[gachas/art] failed to create library cache dir: {}", e);
+        return;
+    }
+
+    let pairs: &[(&str, crate::media::MediaType)] = &[
+        ("hero", crate::media::MediaType::Banner),
+        ("grid", crate::media::MediaType::Coverart),
+        ("icon", crate::media::MediaType::Icon),
+    ];
+
+    for (gacha_kind, lib_type) in pairs {
+        if cached_url(&manifest.publisher_slug, &manifest.game_slug, gacha_kind).is_none()
+            && let Err(e) = fetch_first_match(&manifest.publisher_slug, &manifest.game_slug, gacha_kind) {
+                eprintln!("[gachas/art] {} fetch fialed: {}", gacha_kind, e);
+                continue;
+            }
+
+        let gacha_dir = cache_dir_for(&manifest.publisher_slug, &manifest.game_slug);
+        for ext in EXTENSIONS {
+            let src = gacha_dir.join(format!("{}.{}", gacha_kind, ext));
+            if !src.exists() {
+                continue;
+            }
+            let dst = library_dir.join(format!("{}_{}.{}", game_id, lib_type.suffix(), lib_type.extension()));
+            match std::fs::copy(&src, &dst) {
+                Ok(_) => on_asset(lib_type),
+                Err(e) => eprintln!("[gachas/art] copy {} → {} failed: {}", src.display(), dst.display(), e),
+            }
+            break;
+        }
+    }
+}
+
 fn fetch_first_match(publisher_slug: &str, game_slug: &str, kind: &str) -> anyhow::Result<()> {
     let base = crate::settings::get().assets.fetch_url.trim().to_string();
     if base.is_empty() {
