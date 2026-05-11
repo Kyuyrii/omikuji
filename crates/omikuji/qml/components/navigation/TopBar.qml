@@ -24,6 +24,7 @@ Item {
     signal zoomMoved(real value)
     signal spacingMoved(int value)
     signal tabSelected(int index)
+    signal consoleModeClicked()
 
     height: 54
 
@@ -204,6 +205,21 @@ Item {
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
         spacing: 6
+
+        IconButton {
+            id: consoleBtn
+            icon: "sports_esports"
+            size: 32
+            rounded: true
+            anchors.verticalCenter: parent.verticalCenter
+            onClicked: root.consoleModeClicked()
+
+            Tooltip {
+                text: "Console Mode"
+                tipVisible: consoleBtn.hovered
+                y: parent.height + 8
+            }
+        }
 
         IconButton {
             id: displayBtn

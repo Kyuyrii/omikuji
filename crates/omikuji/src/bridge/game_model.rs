@@ -293,6 +293,12 @@ pub mod qobject {
         #[qinvokable]
         fn trim_heap(self: &GameModel);
 
+        #[qinvokable]
+        fn launch_console_mode(self: &GameModel);
+
+        #[qinvokable]
+        fn launch_desktop_mode(self: &GameModel);
+
 
         #[qinvokable]
         fn home_dir(self: &GameModel) -> QString;
@@ -1944,6 +1950,22 @@ impl qobject::GameModel {
         unsafe {
             libc::malloc_trim(0);
         }
+    }
+
+    fn launch_console_mode(&self) {
+        omikuji_core::ui_settings::UiSettings::set_console_mode_active(true);
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).arg("console").spawn();
+        }
+        std::process::exit(0);
+    }
+
+    fn launch_desktop_mode(&self) {
+        omikuji_core::ui_settings::UiSettings::set_console_mode_active(false);
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).spawn();
+        }
+        std::process::exit(0);
     }
 
     fn disk_free_space(&self, path: &QString) -> QString {

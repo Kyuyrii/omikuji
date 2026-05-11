@@ -4,8 +4,8 @@
 use cxx_qt::{CxxQtType, Threading};
 use omikuji_core::fs_watcher::FileWatcher;
 use omikuji_core::ui_settings::{
-    BehaviorSettings, CategoryEntry, DisplaySettings, LibrarySettings, NavSettings, TabsSettings,
-    UiSettings, ui_settings_path,
+    BehaviorSettings, CategoryEntry, ConsoleModeSettings, DisplaySettings, LibrarySettings,
+    NavSettings, TabsSettings, UiSettings, ui_settings_path,
 };
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -35,6 +35,7 @@ pub mod qobject {
         #[qproperty(f64, ui_scale, cxx_name = "uiScale")]
         #[qproperty(bool, muted_icons, cxx_name = "mutedIcons")]
         #[qproperty(QString, card_flow, cxx_name = "cardFlow")]
+        #[qproperty(QString, console_background, cxx_name = "consoleBackground")]
         type UiSettingsBridge = super::UiSettingsRust;
     }
 
@@ -109,6 +110,10 @@ pub mod qobject {
         fn apply_card_flow(self: Pin<&mut UiSettingsBridge>, value: &QString);
 
         #[qinvokable]
+        #[cxx_name = "applyConsoleBackground"]
+        fn apply_console_background(self: Pin<&mut UiSettingsBridge>, value: &QString);
+
+        #[qinvokable]
         #[cxx_name = "reloadFromDisk"]
         fn reload_from_disk(self: Pin<&mut UiSettingsBridge>);
 
@@ -148,6 +153,7 @@ pub struct UiSettingsRust {
     pub ui_scale: f64,
     pub muted_icons: bool,
     pub card_flow: cxx_qt_lib::QString,
+    pub console_background: cxx_qt_lib::QString,
     pub categories: Vec<CategoryEntry>,
     pub watcher: Option<FileWatcher>,
     // skips the watcher echo from our own persist() writes
@@ -179,6 +185,7 @@ impl UiSettingsRust {
             ui_scale: s.display.scale,
             muted_icons: s.display.muted_icons,
             card_flow: cxx_qt_lib::QString::from(&s.display.card_flow),
+            console_background: cxx_qt_lib::QString::from(&s.console_mode.background),
             categories: s.categories.clone(),
             watcher: None,
             suppress_reload_until: None,
@@ -213,6 +220,10 @@ impl qobject::UiSettingsBridge {
                 scale: self.ui_scale,
                 muted_icons: self.muted_icons,
                 card_flow: self.card_flow.to_string(),
+            },
+            console_mode: ConsoleModeSettings {
+                background: self.console_background.to_string(),
+                active: UiSettings::load().console_mode.active,
             },
             categories: self.categories.clone(),
         }
@@ -306,6 +317,11 @@ impl qobject::UiSettingsBridge {
         self.persist();
     }
 
+    fn apply_console_background(mut self: Pin<&mut Self>, value: &cxx_qt_lib::QString) {
+        self.as_mut().set_console_background(value.clone());
+        self.persist();
+    }
+
     fn reload_from_disk(mut self: Pin<&mut Self>) {
         let s = UiSettings::load();
         self.as_mut().set_card_zoom(s.library.card_zoom);
@@ -323,6 +339,7 @@ impl qobject::UiSettingsBridge {
         self.as_mut().set_ui_scale(s.display.scale);
         self.as_mut().set_muted_icons(s.display.muted_icons);
         self.as_mut().set_card_flow(cxx_qt_lib::QString::from(&s.display.card_flow));
+        self.as_mut().set_console_background(cxx_qt_lib::QString::from(&s.console_mode.background));
         self.as_mut().rust_mut().get_mut().categories = s.categories;
         self.as_mut().categories_changed();
     }

@@ -12,9 +12,11 @@ unsafe extern "C" {
 
 #[tokio::main]
 async fn main() {
-    if let Some(code) = cli::try_dispatch() {
-        std::process::exit(code);
-    }
+    let qml_root = match cli::dispatch() {
+        cli::CliAction::Exit(code) => std::process::exit(code),
+        cli::CliAction::Gui => "qrc:/qt/qml/omikuji/qml/Main.qml",
+        cli::CliAction::Console => "qrc:/qt/qml/omikuji/qml/ConsoleMode.qml",
+    };
 
     let mut app = QGuiApplication::new();
 
@@ -29,7 +31,7 @@ async fn main() {
     let mut engine = QQmlApplicationEngine::new();
 
     if let Some(engine) = engine.as_mut() {
-        engine.load(&QUrl::from("qrc:/qt/qml/omikuji/qml/Main.qml"));
+        engine.load(&QUrl::from(qml_root));
     }
 
     if let Some(app) = app.as_mut() {

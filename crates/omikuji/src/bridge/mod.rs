@@ -3,6 +3,7 @@ pub mod components;
 pub mod defaults;
 pub mod download_model;
 pub mod epic_model;
+pub mod gamepad;
 pub mod game_model;
 pub mod gog_model;
 pub mod library_watcher;

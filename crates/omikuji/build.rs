@@ -1,6 +1,7 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn collect_icons() -> (Vec<String>, Vec<String>) {
     let dir = Path::new("qml/icons");
@@ -25,6 +26,63 @@ fn collect_icons() -> (Vec<String>, Vec<String>) {
     (paths, names)
 }
 
+fn find_qsb() -> PathBuf {
+    if let Ok(out) = Command::new("which").arg("qsb").output()
+        && out.status.success()
+    {
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+    for candidate in [
+        "/usr/lib/qt6/bin/qsb",
+        "/usr/lib/x86_64-linux-gnu/qt6/bin/qsb",
+        "/usr/libexec/qt6/qsb",
+    ] {
+        let p = PathBuf::from(candidate);
+        if p.exists() {
+            return p;
+        }
+    }
+    panic!("qsb not found; install qt6-shadertools");
+}
+
+fn compile_shaders() -> Vec<String> {
+    let dir = Path::new("qml/components/consolemode/shaders");
+    if !dir.exists() {
+        return vec![];
+    }
+    let qsb = find_qsb();
+    let mut out_paths: Vec<String> = vec![];
+    for entry in fs::read_dir(dir).expect("read shader dir") {
+        let entry = entry.expect("read shader entry");
+        let p = entry.path();
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+        if !matches!(ext, "frag" | "vert") {
+            continue;
+        }
+        let filename = p.file_name().unwrap().to_string_lossy().into_owned();
+        let qsb_filename = format!("{filename}.qsb");
+        let qsb_path = dir.join(&qsb_filename);
+        let status = Command::new(&qsb)
+            .arg("--qt6")
+            .arg("-o")
+            .arg(&qsb_path)
+            .arg(&p)
+            .status()
+            .expect("invoke qsb");
+        if !status.success() {
+            panic!("qsb failed for {filename}");
+        }
+        out_paths.push(format!(
+            "qml/components/consolemode/shaders/{qsb_filename}"
+        ));
+    }
+    out_paths.sort();
+    out_paths
+}
+
 fn write_icon_names(names: &[String]) {
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
     let out_path = Path::new(&out_dir).join("icon_names.rs");
@@ -41,12 +99,27 @@ fn main() {
     write_icon_names(&icon_names);
     println!("cargo:rerun-if-changed=qml/icons");
 
+    let shader_paths = compile_shaders();
+    println!("cargo:rerun-if-changed=qml/components/consolemode/shaders");
+
+    let mut qrc_paths = icon_paths;
+    qrc_paths.extend(shader_paths);
+
     let builder = CxxQtBuilder::new_qml_module(
         QmlModule::new("omikuji")
             .qml_files([
                 "qml/Main.qml",
+                "qml/ConsoleMode.qml",
                 // root
                 "qml/components/Theme.qml",
+
+                "qml/components/consolemode/ConsoleCard.qml",
+                "qml/components/consolemode/ConsoleCardRow.qml",
+                "qml/components/consolemode/ConsoleHintBar.qml",
+                "qml/components/consolemode/ConsoleOsk.qml",
+                "qml/components/consolemode/ConsolePlayButton.qml",
+                "qml/components/consolemode/ConsoleSettingsDialog.qml",
+                "qml/components/consolemode/ConsoleTopBar.qml",
 
                 "qml/components/categories/CategoriesController.qml",
                 // dialogs
@@ -127,7 +200,7 @@ fn main() {
                 "qml/components/widgets/WavyProgressBar.qml",
             ])
     )
-    .qrc_resources(&icon_paths)
+    .qrc_resources(&qrc_paths)
     .files([
         "src/bridge/game_model.rs",
         "src/bridge/library_watcher.rs",
@@ -138,6 +211,7 @@ fn main() {
         "src/bridge/components.rs",
         "src/bridge/archive_manager.rs",
         "src/bridge/defaults.rs",
+        "src/bridge/gamepad.rs",
     ])
     ;
 

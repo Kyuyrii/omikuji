@@ -1,5 +1,6 @@
 /target/
 **/*.rs.bk
+**/*.qsb
 
 /build/
 /build-*/

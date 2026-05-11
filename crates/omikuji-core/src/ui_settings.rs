@@ -16,6 +16,8 @@ pub struct UiSettings {
     pub nav: NavSettings,
     pub behavior: BehaviorSettings,
     pub display: DisplaySettings,
+    #[serde(default)]
+    pub console_mode: ConsoleModeSettings,
     #[serde(default = "default_categories")]
     pub categories: Vec<CategoryEntry>,
 }
@@ -28,6 +30,7 @@ impl Default for UiSettings {
             nav: NavSettings::default(),
             behavior: BehaviorSettings::default(),
             display: DisplaySettings::default(),
+            console_mode: ConsoleModeSettings::default(),
             categories: default_categories(),
         }
     }
@@ -134,6 +137,19 @@ impl Default for DisplaySettings {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ConsoleModeSettings {
+    pub background: String,
+    pub active: bool,
+}
+
+impl Default for ConsoleModeSettings {
+    fn default() -> Self {
+        Self { background: "wave".into(), active: false }
+    }
+}
+
 pub fn ui_settings_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -174,6 +190,12 @@ impl UiSettings {
                 Self::default()
             }
         }
+    }
+
+    pub fn set_console_mode_active(active: bool) {
+        let mut settings = Self::load();
+        settings.console_mode.active = active;
+        let _ = settings.save();
     }
 
     // atomic write (tmp + rename) so a crash mid-save cant leave a half-written file (hopefully)

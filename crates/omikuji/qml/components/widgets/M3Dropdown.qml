@@ -12,6 +12,31 @@ Item {
 
     signal selected(var value)
 
+    readonly property bool popupOpen: popup.visible
+
+    property int _savedIndex: 0
+
+    function openPopup() {
+        _savedIndex = currentIndex
+        popup.open()
+    }
+    function closePopupCancel() {
+        currentIndex = _savedIndex
+        popup.close()
+    }
+    function closePopupCommit() {
+        selected(currentValue)
+        popup.close()
+    }
+    function highlightPrev() {
+        if (options.length === 0) return
+        currentIndex = (currentIndex - 1 + options.length) % options.length
+    }
+    function highlightNext() {
+        if (options.length === 0) return
+        currentIndex = (currentIndex + 1) % options.length
+    }
+
     implicitWidth: 200
     implicitHeight: label ? labelText.height + 4 + button.height : button.height
 

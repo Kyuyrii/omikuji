@@ -532,6 +532,7 @@ property real cardZoom: uiSettings.cardZoom
             : 0
 
         onAddClicked: root.currentView = "add"
+        onConsoleModeClicked: gameModel.launch_console_mode()
         onZoomMoved: (v) => uiSettings.applyCardZoom(v)
         onSpacingMoved: (v) => uiSettings.applyCardSpacing(v)
         onTabSelected: (i) => {

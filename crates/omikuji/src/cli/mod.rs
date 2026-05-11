@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use omikuji_core::library::{Game, Library};
+use omikuji_core::ui_settings::UiSettings;
 use omikuji_core::{launch, media, process};
 use std::io::{self, IsTerminal, Write};
 
@@ -19,19 +20,33 @@ pub struct Cli {
 pub enum Cmd {
     #[command(about = "Launch a game by slug, id, or slug_id")]
     Run { target: String },
+    #[command(about = "Open omikuji in console (big picture) mode")]
+    Console,
 }
 
-pub fn try_dispatch() -> Option<i32> {
+pub enum CliAction {
+    Exit(i32),
+    Gui,
+    Console,
+}
+
+pub fn dispatch() -> CliAction {
     let cli = Cli::parse();
 
-    let target = match cli.command {
-        Some(Cmd::Run { target }) => target,
-        None => return None,
-    };
-
-    // main is #[tokio::main]; building a runtime inline would panic
-    let handle = std::thread::spawn(move || run_game(&target));
-    Some(handle.join().unwrap_or(1))
+    match cli.command {
+        Some(Cmd::Run { target }) => {
+            let handle = std::thread::spawn(move || run_game(&target));
+            CliAction::Exit(handle.join().unwrap_or(1))
+        }
+        Some(Cmd::Console) => CliAction::Console,
+        None => {
+            if UiSettings::load().console_mode.active {
+                CliAction::Console
+            } else {
+                CliAction::Gui
+            }
+        }
+    }
 }
 
 fn run_game(input: &str) -> i32 {
