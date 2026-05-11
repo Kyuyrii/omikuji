@@ -16,6 +16,9 @@ Backend is Rust, frontend is Qt/QML via [cxx-qt](https://github.com/KDAB/cxx-qt)
 | <img src="docs/screenshots/gacha_store.png"/>    | <img src="docs/screenshots/gacha_store_download.png"/>    |
 | Interface Settings                               | Components Settings                                       |
 | <img src="docs/screenshots/settings_page_interface.png"/> | <img src="docs/screenshots/settings_page_componenets.png"/> |
+| Console Mode (Aurora background)                 | Console Mode (Sakura background)   
+| <img src="docs/screenshots/console_mode_1.png"/> | <img src="docs/screenshots/console_mode_2.png"/> |
+
 
 
 ## What it does
